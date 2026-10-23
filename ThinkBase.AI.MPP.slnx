@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ThinkBase.AI.MPP.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ThinkBase.AI.MPP.Tests.csproj" />
+  </Folder>
+</Solution>

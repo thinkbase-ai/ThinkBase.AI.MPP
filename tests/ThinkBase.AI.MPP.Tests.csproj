@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ThinkBase.AI.MPP\ThinkBase.AI.MPP.csproj" />
+    <ProjectReference Include="..\src\ThinkBase.AI.MPP.csproj" />
   </ItemGroup>
 
 </Project>

@@ -3,6 +3,68 @@
 The server side of the [Machine Payments Protocol](https://github.com/tempoxyz/mpp-specs) (MPP) for
 ASP.NET Core [Model Context Protocol](https://modelcontextprotocol.io/) servers.
 
+## Reasons for existence
+
+The MPP protocol, created by Stripe and Tempo and documented at [mpp.dev](https://mpp.dev) has not yet got a .Net implementation. 
+At [ThinkBase](https://thinkbase.llc) we wanted to add MPP support to several websites that had MCP servers. This would have been a long task in the days before AI coding, 
+but we managed to create this within a couple of days with the help of GitHub Copilot and Claude. It passes the validation process on [mpp.dev](https://mpp.dev).
+This implementation assumes you have a Stripe account, and that you will use Stripe as your payment mechanism.
+
+Our implementation is probably what most people will want. You can subscribe to our services, so MCP tool calls with an API key are passed through to the existing MCP code, where API keys are checked and the user is inferred.
+MPP requires that you present a list of your chargeable tools in a root file called openapi.json. This is created, in our case, from a MongoDB container which contains all the tool descriptions and pricing.
+This is defined in the class ToolPrice. Since prices don't change often, the code caches this locally, as it is used frequently by the MPP code to apply charges.
+
+```c#
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
+
+namespace ThinkBase.AI.MPP.Models
+{
+    /// <summary>
+    /// The price of a single MCP tool call. One document per tool is held in the
+    /// <c>ToolPrices</c> collection; prices change infrequently and are cached in memory by
+    /// <see cref="Interfaces.IToolPricingService"/>.
+    /// </summary>
+    public class ToolPrice
+    {
+        [BsonId]
+        [BsonRepresentation(BsonType.ObjectId)]
+        [BsonIgnoreIfNull]
+        public string? Id { get; set; }
+
+        /// <summary>Name of the MCP tool the price applies to, for example <c>FindLocation</c>.</summary>
+        public string ToolName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Amount charged for one call, in cents of <see cref="Currency"/>, to an agent paying for
+        /// the call with the Machine Payments Protocol. Zero means the tool is not payable at all:
+        /// it needs the account an API key comes with, and a call without one is refused with 403.
+        /// </summary>
+        public decimal AmountCents { get; set; }
+
+        /// <summary>
+        /// Fixed amount charged for one call, in cents of <see cref="Currency"/>, to a subscribed
+        /// user calling with a valid API key. These are generally fractions of a cent and are billed
+        /// monthly rather than per call. <c>null</c> falls back to <c>Mpp:DefaultSubscriberAmountCents</c>.
+        /// </summary>
+        [BsonIgnoreIfNull]
+        public decimal? SubscriberAmountCents { get; set; }
+
+        /// <summary>Currency the amount is expressed in, for example <c>usd</c>.</summary>
+        public string Currency { get; set; } = "usd";
+
+        /// <summary>Human readable description shown to the paying agent in the challenge.</summary>
+        public string? Description { get; set; }
+
+        [BsonIgnoreIfNull]
+        public DateTime? UpdatedUtc { get; set; }
+    }
+}
+```
+Some of our tools are only relevant if you have a subscription. The 
+
+
+
 An agent that holds no API key is not turned away: the call it is making is priced, answered with a
 `402 Payment Required` challenge, and run once the agent comes back with a payment credential. An
 agent may pay with a card, settled through Stripe, or in stablecoin, by transferring TIP-20 tokens

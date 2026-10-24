@@ -6,9 +6,10 @@ ASP.NET Core [Model Context Protocol](https://modelcontextprotocol.io/) servers.
 ## Reasons for existence
 
 The MPP protocol, created by Stripe and Tempo and documented at [mpp.dev](https://mpp.dev) has not yet got a .Net implementation. 
-At [ThinkBase](https://thinkbase.llc) we wanted to add MPP support to several websites that had MCP servers. This would have been a long task in the days before AI coding, 
+At [ThinkBase](https://thinkbase.llc) we wanted to add MPP support to several websites that had MCP servers. These are implemented in ASP.Net. This would have been a long task in the days before AI coding, 
 but we managed to create this within a couple of days with the help of GitHub Copilot and Claude. It passes the validation process on [mpp.dev](https://mpp.dev).
 This implementation assumes you have a Stripe account, and that you will use Stripe as your payment mechanism.
+The purpose is to monetize some of our services for ad-hoc payments where this makes sense.
 
 Our implementation is probably what most people will want. You can subscribe to our services, so MCP tool calls with an API key are passed through to the existing MCP code, where API keys are checked and the user is inferred.
 MPP requires that you present a list of your chargeable tools in a root file called openapi.json. This is created, in our case, from a MongoDB container which contains all the tool descriptions and pricing.
@@ -61,8 +62,12 @@ namespace ThinkBase.AI.MPP.Models
     }
 }
 ```
-Some of our tools are only relevant if you have a subscription. The 
+Some of our tools are only relevant if you have a subscription. The AmountCents is set to zero for these tools, and the user is bounced if they call them without an API key.
+We also use the above class for our subscription services, which are usage-based. 
+Obviously, the subscription per-use prices are much lower than the one-time charge, but they also reflect two different circumstances: development, where many calls will be made to construct and test a knowledge Base, and usage, where the knowledge base is used by agents and humans.
 
+This is an interim implementation until [mpp.dev](https://mpp.dev) creates a .net SDK, if they ever do. We'll update it as changes are required through our experience with usage. 
+If you want to become a maintainer, that would be great.
 
 
 An agent that holds no API key is not turned away: the call it is making is priced, answered with a

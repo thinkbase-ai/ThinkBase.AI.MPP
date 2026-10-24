@@ -131,8 +131,7 @@ Everything is bound from the `Mpp` configuration section and, as in the Stripe m
 sample, three settings are enough: `Stripe:secret_key`, from which the challenge signing secret and
 the Tempo network are derived, `Mpp:NetworkId` and `Mpp:Tempo:DepositAddress`. The prices are read
 from `Mpp:DatabaseName` (or `MongoAuthDatabase`) of `Mpp:ConnectionString` (or
-`MongoConnectionString`). The full list of settings, and a description of the protocol as it is
-implemented here, is in the [README of MCP.Scientio.Com](../README.md#machine-payments-mpp).
+`MongoConnectionString`). 
 
 ## Tests
 

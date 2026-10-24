@@ -133,6 +133,65 @@ the Tempo network are derived, `Mpp:NetworkId` and `Mpp:Tempo:DepositAddress`. T
 from `Mpp:DatabaseName` (or `MongoAuthDatabase`) of `Mpp:ConnectionString` (or
 `MongoConnectionString`). 
 
+#### Adding ThinkBase.AI.MPP to an ASP.NET Core site with MCP
+
+The changes made here are the whole of the work, and are the same for any ASP.NET Core site that already maps an MCP endpoint.
+
+1. **Reference the package.** `dotnet add package ThinkBase.AI.MPP`. It brings `MongoDB.Driver`, `Stripe.net`, `ModelContextProtocol`, and `Microsoft.Extensions.Http.Resilience` with it; a site that already references `MongoDB.Driver` may have to raise its version to the one the package asks for, or the restore fails with `NU1605`.
+2. **Supply the three things the package leaves to the host**, because they belong to the application rather than to the protocol:
+   - a `StripeClient`, which settles the card payments. Register it from the Stripe secret key, or use `AddStripe` from `Stripe.Extensions.DependencyInjection`.
+   - an `IDistributedCache`, in which the settled challenges and the spent stablecoin transfers are remembered so that neither can be presented twice. This site uses `AddStackExchangeRedisCache` when `Redis:ConnectionString` is configured and `AddDistributedMemoryCache` otherwise.
+   - an `IMppSubscriberResolver`, which tells the middleware that a request already belongs to a subscriber and is to be billed rather than challenged. A site that sells no subscriptions, as this one does, registers none and every call is then paid for.
+3. **Register the protocol and put the middleware in front of the MCP endpoint:**
+
+   ```csharp
+   builder.Services.AddHttpContextAccessor();
+   builder.Services.AddSingleton(new StripeClient(stripeSecretKey));
+   builder.Services.AddMachinePayments(builder.Configuration, typeof(Program).Assembly);
+
+   builder.Services
+       .AddMcpServer()
+       .WithHttpTransport()
+       .WithTools<JobsMcpTools>()
+       // Returns the receipt of a settled payment in the _meta of the tool result.
+       .WithRequestFilters(filters => filters.AddCallToolFilter(MppReceiptFilter.Create()));
+
+   var app = builder.Build();
+
+   app.UseMachinePayments();   // before the MCP endpoint is mapped
+   app.MapMcp("/mcp");
+   ```
+
+   The assembly passed to `AddMachinePayments` is the one whose `[McpServerToolType]` classes are priced; it is also what `Mpp:SeedPrices` writes the price documents from. `AddHttpContextAccessor` is what lets the receipt filter find the receipt of the call.
+4. **Name the MCP path.** `Mpp:McpPaths` defaults to `["/", "/mcp"]`, which would also challenge the `POST` of a Razor page served from the site root. Set it to the path the MCP transport is actually mapped on; this site does so in `MachinePaymentsDefaults`, which also fills in the realm, the MongoDB instance the prices are read from, and the title of the discovery document from the settings the site already has:
+
+   ```csharp
+   builder.Services.PostConfigure<MppOptions>(options => MachinePaymentsDefaults.Apply(options, mcpOptions, mongoOptions));
+   ```
+5. **Serve the discovery document** from the application, which is the only part that knows the URL it is reached at:
+
+   ```csharp
+   app.MapGet("/openapi.json", async (HttpContext context, IMppDiscoveryService discoveryService, IOptions<MppOptions> mppOptions, CancellationToken cancellationToken) =>
+   {
+       var realm = string.IsNullOrWhiteSpace(mppOptions.Value.Realm) ? context.Request.Host.Host : mppOptions.Value.Realm;
+       var document = await discoveryService.BuildDocumentAsync($"{context.Request.Scheme}://{context.Request.Host}", realm, cancellationToken);
+
+       context.Response.Headers.CacheControl = $"public, max-age={MppDiscoveryService.CacheSeconds}";
+
+       return Results.Content(document.ToJsonString(), "application/json");
+   });
+   ```
+6. **Configure it.** Three settings are enough: `Stripe:secret_key`, from which the challenge signing secret and the Tempo network are derived, `Mpp:NetworkId`, the Stripe Business Network Profile the shared payment tokens are issued to, and, for stablecoin payments, `Mpp:Tempo:DepositAddress`. Supply the Stripe secret key through environment variables, user secrets, or Azure App Service configuration, never through `appsettings.json`. Guard the registration on the key being present, as this site does, so that the site still runs without a Stripe account.
+7. **Price the tools.** Set `Mpp:SeedPrices` to `true` for one run to write a `ToolPrice` document per tool, then set the prices by hand in the `ToolPrices` collection. `AmountCents` of zero means the tool is not for sale at all: a call without a subscription is refused with `403` rather than challenged.
+
+Check the result with an unpaid call, which must come back as a 402 carrying a challenge, and with `GET /openapi.json`, which must list an `x-payment-info` offer per tool:
+
+```bash
+curl -i -X POST https://aicomply.ai/mcp -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_jobs","arguments":{"query":"ai"}}}'
+```
+
+
 ## Tests
 
 `ThinkBase.AI.MPP.Tests` covers the library on its own:
